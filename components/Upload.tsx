@@ -1,5 +1,5 @@
 import { CheckCircle2, ImageIcon, UploadIcon } from "lucide-react";
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useOutletContext } from "react-router";
 import { PROGRESS_INCREMENT, PROGRESS_INTERVAL_MS, REDIRECT_DELAY_MS } from "lib/constants";
 
@@ -12,6 +12,9 @@ const Upload = ({ onComplete }: UploadProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [progress, setProgress] = useState(0);
 
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const { isSignedIn } = useOutletContext<AuthContext>()
 
   const processFile = (file: File) => {
@@ -19,19 +22,30 @@ const Upload = ({ onComplete }: UploadProps) => {
 
     setFile(file);
     const reader = new FileReader();
+    reader.onerror = () => {
+      setFile(null)
+      setProgress(0)
+    }
 
     reader.onload = (e) => {
       const base64Data = e.target?.result as string;
       let currentProgress = 0;
 
-      const interval = setInterval(() => {
+      intervalRef.current = setInterval(() => {
         currentProgress += PROGRESS_INCREMENT;
 
         if (currentProgress >= 100) {
           setProgress(100);
-          clearInterval(interval);
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
 
-          setTimeout(() => {
+          timeoutRef.current = setTimeout(() => {
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+              timeoutRef.current = null;
+            }
             onComplete?.(base64Data);
           }, REDIRECT_DELAY_MS);
         } else {
@@ -59,7 +73,8 @@ const Upload = ({ onComplete }: UploadProps) => {
     if (!isSignedIn) return;
 
     const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile && droppedFile.type.startsWith("image/")) {
+    const allowedTypes = ['image/jpeg', 'image/png']
+    if (droppedFile && allowedTypes.includes(droppedFile.type)) {
       processFile(droppedFile);
     }
   };
